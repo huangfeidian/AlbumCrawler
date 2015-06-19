@@ -2,7 +2,6 @@
 #include "../Http/HttpFileClient.h"
 #include "../Http/HttpStreamClient.h"
 #include <vector>
-#include <boost/filesystem.hpp>
 class HttpClient
 {
 private:

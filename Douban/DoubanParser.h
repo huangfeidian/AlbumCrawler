@@ -35,8 +35,24 @@ public:
 		std::string first_part_str = weblink.substr(is_douban, first_delimiter-is_douban);
 		if (first_part_str == "people")//this is a personal album pivotal link
 		{
-			//to do
-			return result;
+			if (weblink.find("?") == std::string::npos)
+			{
+				auto all_album_pages = extract_personalbum_all_page(webpage, weblink);
+				for (auto i : all_album_pages)
+				{
+					std::cout << "pushing " << i << " to queue" << std::endl;
+					result.push_back(std::make_pair(i, false));
+				}
+
+			}
+			else
+			{
+				auto all_single_albums = extract_personalbum_signlepage(webpage);
+				for (auto i : all_single_albums)
+				{
+					result.push_back(std::make_pair(i, false));
+				}
+			}
 		}
 		else
 		{
@@ -44,14 +60,14 @@ public:
 			{
 				auto second_delimiter = weblink.find("/", first_delimiter + 1);
 				std::string second_part_str = weblink.substr(first_delimiter + 1, second_delimiter-first_delimiter-1);
-				if (second_part_str == "photo")//it is a single photo
+				if (second_part_str == "photo")//对应的是单张图片的地址
 				{
-					if (weblink.find("large", second_delimiter) == std::string::npos)//not large pic
+					if (weblink.find("large", second_delimiter) == std::string::npos)//如果不是大图地址
 					{
 						auto single_pic_link = extract_single_pic(webpage);
 						result.push_back(single_pic_link);
 					}
-					else// it is the large pic
+					else// 如果是大图地址
 					{
 						result.push_back(std::make_pair(extract_large(webpage), true));
 					}
@@ -60,7 +76,7 @@ public:
 				{
 					if (second_part_str == "album")
 					{
-						if (weblink.find("?") != std::string::npos)//it is a album head page 
+						if (weblink.find("?") != std::string::npos)//如果是专辑中某一页的地址
 						{
 							auto pages = extract_album_head(webpage, weblink);
 							for (auto single_page : pages)
@@ -68,7 +84,7 @@ public:
 								result.push_back(std::make_pair(single_page, false));
 							}
 						}
-						else//it is a normal album page
+						else//如果是专辑首页的地址
 						{
 							auto pages = extract_album_single_page(webpage);
 							for (auto single_page : pages)
@@ -87,6 +103,48 @@ public:
 		}
 		return result;
 
+	}
+	std::vector<std::string> extract_personalbum_signlepage(const std::string& webpage)const 
+	{
+		std::vector<std::string> result;
+		auto block_of_album = webpage.find("class=\"album_photo\" href=");
+		decltype(block_of_album) album_begin,album_end;
+		while (block_of_album != std::string::npos)
+		{
+			album_begin = webpage.find("http",block_of_album);
+			album_end = webpage.find('\"', album_begin);
+			std::string album_link = webpage.substr(album_begin, album_end - album_begin);
+			result.push_back(album_link);
+			block_of_album = webpage.find("class=\"album_photo\" href=", album_end);
+		}
+		return result;
+	}
+	std::vector<std::string> extract_personalbum_all_page(const std::string& webpage,const std::string& weblink)const 
+	{
+		std::vector<std::string> result;
+		auto block_of_page = webpage.find("data-total-page");
+		if (block_of_page != std::string::npos)//对应个人相册不止一页的情况
+		{
+			block_of_page = webpage.find('\"', block_of_page);
+			block_of_page++;
+			int total_albums = 0;
+			while (webpage[block_of_page] != '\"')
+			{
+				total_albums = total_albums * 10 + webpage[block_of_page] - '0';
+				block_of_page++;
+			}
+			char inst_byte[5] = "";
+			for (int i = 0; i < total_albums; i ++)
+			{
+				std::sprintf(inst_byte, "%d", i*16);
+				result.push_back(weblink + "?start=" + inst_byte);
+			}
+		}
+		else//否则直接返回当前页
+		{
+			result=extract_album_single_page(webpage);
+		}
+		return result;
 	}
 	std::string extract_large(const std::string& webpage)const
 	{
@@ -149,19 +207,23 @@ public:
 	{
 		const int pic_per_page = 18;
 		std::vector<std::string> result_page;
-		auto begin_of_span = album_head_webpage.find("<span class = \"pl\">", album_head_webpage.find("<span class=\"pl\">") + 1);
-		auto end_of_span = album_head_webpage.find(">", begin_of_span)+1;
-		int total_pic = 0;
-		while (album_head_webpage[end_of_span] > '0'&&album_head_webpage[end_of_span] <= '9')
+		
+		int total_pages = 0;
+		auto begin_of_page = album_head_webpage.find("data-total-page=");//有些相册可能只有一页
+		if (begin_of_page != std::string::npos)
 		{
-			total_pic = total_pic * 10 + album_head_webpage[end_of_span] - '0';
-			end_of_span++;
+			auto end_of_page = album_head_webpage.find("=", begin_of_page);
+			end_of_page+=2;
+			while (album_head_webpage[end_of_page] >= '0'&&album_head_webpage[end_of_page] <= '9')
+			{
+				total_pages = total_pages * 10 + album_head_webpage[end_of_page] - '0';
+				end_of_page++;
+			}
 		}
-		int total_pages = (total_pic + 17) / 18;
 		for (int i = 0; i < total_pages; i++)
 		{
 			char inst_byte[5] = "";
-			std::sprintf(inst_byte, "%d", i*18);
+			std::sprintf(inst_byte, "%d", i*pic_per_page);
 			result_page.push_back(album_head_link + "?start=" + inst_byte);
 		}
 		return result_page;
